@@ -18,11 +18,15 @@
     </div>
   </div>
   <nav class="nav">
-    <a href="index.html">Home</a>
-    <a href="about.html" class="active">About</a>
-    <a href="activity.html">Our Activities</a>
-    <a href="become-member.html">Become a Member</a>
-    <a href="contact.html" class="btn-gold">Get Support</a>
+    <button class="menu-toggle" onclick="toggleMenu()">☰</button>
+    <div class="nav-links">
+      <button class="nav-close" onclick="toggleMenu()">×</button>
+      <a href="index.html">Home</a>
+      <a href="about.html" class="active">About</a>
+      <a href="activity.html">Our Activities</a>
+      <a href="become-member.html">Become a Member</a>
+      <a href="contact.html" class="btn-gold">Get Support</a>
+    </div>
   </nav>
 </header>
 
@@ -132,5 +136,7 @@
     <p>© 2024 Forum for Uganda's Migrant Employees, Diaspora and Returnees. All rights reserved.</p>
   </div>
 </footer>
+
+<script src="app.js"></script>
 </body>
 </html>

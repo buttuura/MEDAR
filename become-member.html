@@ -14,11 +14,15 @@
     <div><strong>FORUM FOR UGANDA'S</strong><br><span>MIGRANT EMPLOYEES,<br>DIASPORA AND RETURNEES</span></div>
   </div>
   <nav class="nav">
-    <a href="index.html">Home</a>
-    <a href="about.html">About</a>
-    <a href="activity.html">Our Activities</a>
-    <a href="become-member.html" class="active">Become a Member</a>
-    <a href="contact.html" class="btn-gold">Get Support</a>
+    <button class="menu-toggle" onclick="toggleMenu()">☰</button>
+    <div class="nav-links">
+      <button class="nav-close" onclick="toggleMenu()">×</button>
+      <a href="index.html">Home</a>
+      <a href="about.html">About</a>
+      <a href="activity.html">Our Activities</a>
+      <a href="become-member.html" class="active">Become a Member</a>
+      <a href="contact.html" class="btn-gold">Get Support</a>
+    </div>
   </nav>
 </header>
 
@@ -170,5 +174,6 @@
   </div>
 </footer>
 <script src="member.js"></script>
+<script src="app.js"></script>
 </body>
 </html>
