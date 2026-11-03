@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Become a Member | Migrant Employees, Diaspora and Returnees</title>
+  <link rel="stylesheet" href="style.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<header class="header">
+  <div class="logo">
+    <div><strong>MIGRANT EMPLOYEES,</strong><br><span>DIASPORA AND RETURNEES</span></div>
+  </div>
+  <nav class="nav">
+    <button class="menu-toggle" onclick="toggleMenu()">☰</button>
+    <div class="nav-links">
+      <button class="nav-close" onclick="toggleMenu()">×</button>
+      <a href="index.html">Home</a>
+      <a href="about.html">About</a>
+      <a href="activity.html">Our Activities</a>
+      <a href="login.html">Log In</a>
+      <a href="become-member.html" class="active" hidden>Become a Member</a>
+      <a href="contact.html" class="btn-gold">Get Support</a>
+    </div>
+  </nav>
+</header>
+
+<section class="member-hero">
+  <h1>Become a Member</h1>
+  <p>Join 2000+ Ugandans worldwide. Get your <span>Member ID instantly</span> and access all 9 services.</p>
+</section>
+
+<section class="form-section">
+  <div class="form-container">
+    
+    <!-- LEFT FORM -->
+    <form id="fullRegisterForm">
+      <h3>Personal Information</h3>
+      <div class="two-col">
+        <div class="form-field">
+          <label for="fullName">Full Name as on Passport *</label>
+          <input type="text" id="fullName" required>
+        </div>
+        <div class="form-field">
+          <label for="dob">Date of Birth *</label>
+          <input type="date" id="dob" required>
+        </div>
+      </div>
+      <div class="two-col">
+        <div class="form-field">
+          <label for="gender">Gender *</label>
+          <select id="gender" required>
+            <option value="">Select gender</option>
+            <option>Male</option><option>Female</option>
+          </select>
+        </div>
+        <div class="form-field">
+          <label for="nin">National ID / Passport No</label>
+          <input type="text" id="nin">
+        </div>
+      </div>
+
+      <h3>Contact Information</h3>
+      <div class="two-col">
+        <div class="form-field">
+          <label for="phone">Phone Number *</label>
+          <input type="tel" id="phone" required>
+        </div>
+        <div class="form-field">
+          <label for="whatsapp">WhatsApp Number *</label>
+          <input type="tel" id="whatsapp" required>
+        </div>
+      </div>
+      <div class="form-field">
+        <label for="email">Email Address *</label>
+        <input type="email" id="email" required readonly>
+      </div>
+
+      <h3>Location & Status</h3>
+      <div class="two-col">
+        <div class="form-field">
+          <label for="country">Current Country *</label>
+          <select id="country" required>
+            <option value="">Select country</option>
+            <option>Saudi Arabia</option><option>UAE - Dubai</option><option>Qatar</option>
+            <option>Kuwait</option><option>Oman</option><option>USA</option><option>UK</option><option>Uganda</option><option>Other</option>
+          </select>
+        </div>
+        <div class="form-field">
+          <label for="city">City / District</label>
+          <input type="text" id="city">
+        </div>
+      </div>
+      <div class="two-col">
+        <div class="form-field">
+          <label for="memberStatus">Your Status *</label>
+          <select id="memberStatus" required>
+            <option value="">Select status</option>
+            <option>Migrant Employee Abroad</option>
+            <option>Diaspora</option>
+            <option>Returnee</option>
+            <option>Family Member of Migrant</option>
+          </select>
+        </div>
+        <div class="form-field">
+          <label for="agency">Recruitment Agency (if any)</label>
+          <input type="text" id="agency">
+        </div>
+      </div>
+
+      <h3>Which Services Do You Need? (Tick all that apply)</h3>
+      <div class="checkbox-grid">
+        <label><input type="checkbox" value="Airport Picking"> Airport Picking/Dropping</label>
+        <label><input type="checkbox" value="Hotel & Travel Docs"> Hotel & Travel Docs</label>
+        <label><input type="checkbox" value="Legal Support"> Legal Support</label>
+        <label><input type="checkbox" value="Land & Construction"> Buy Plots & Construct</label>
+        <label><input type="checkbox" value="Job Connections"> Job Connections</label>
+        <label><input type="checkbox" value="Rental Management"> Rental Management</label>
+        <label><input type="checkbox" value="Employment Guidance"> Employment Guidance</label>
+        <label><input type="checkbox" value="Counseling"> Counseling & Support</label>
+        <label><input type="checkbox" value="Savings & Member Credit"> Savings & Member Credit</label>
+      </div>
+
+      <h3>Identity & Supporting Documents</h3>
+      <div class="document-upload">
+        <div class="form-field">
+          <label for="identityDocument">Passport or National ID (PDF)</label>
+          <input type="file" id="identityDocument" accept=".pdf,application/pdf" aria-describedby="identityDocumentHelp identityDocumentStatus">
+          <small id="identityDocumentHelp">Select one PDF containing clear images of both sides of your ID, or the passport photo page. Maximum 10 MB.</small>
+          <span class="upload-status" id="identityDocumentStatus" aria-live="polite">No file selected</span>
+        </div>
+        <div class="form-field">
+          <label for="supportingDocuments">Additional supporting documents (optional)</label>
+          <input type="file" id="supportingDocuments" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" multiple aria-describedby="supportingDocumentsHelp supportingDocumentsStatus">
+          <small id="supportingDocumentsHelp">PDF, JPG, or PNG; up to 5 files, 10 MB each.</small>
+          <span class="upload-status" id="supportingDocumentsStatus" aria-live="polite">No files selected</span>
+        </div>
+        <div class="form-field">
+          <label for="additionalInformation">Additional information (optional)</label>
+          <textarea id="additionalInformation" rows="4" placeholder="Add any details that may support your application"></textarea>
+        </div>
+        <p class="document-privacy">Documents are submitted to the membership server and stored outside the public website files. Use this form only on a trusted HTTPS connection. Server storage encryption and access policies must be configured before production use.</p>
+      </div>
+
+      <h3>Emergency Contact</h3>
+      <div class="two-col">
+        <div class="form-field">
+          <label for="emName">Emergency Contact Name</label>
+          <input type="text" id="emName">
+        </div>
+        <div class="form-field">
+          <label for="emPhone">Emergency Phone</label>
+          <input type="tel" id="emPhone">
+        </div>
+      </div>
+      <p class="member-form-message" id="memberFormMessage" role="status" aria-live="polite" hidden></p>
+      <button type="submit" class="submit-btn" disabled>Submit Registration & Get Member ID →</button>
+      <p class="secure">Your application is submitted to the membership server. We Care. We Support. We Empower.</p>
+    </form>
+
+    <!-- RIGHT PREVIEW -->
+    <div class="preview-col">
+      <div class="id-preview">
+        <div class="id-preview-heading">
+          <div>
+            <span class="id-preview-label">YOUR MEMBERSHIP</span>
+            <h4>Member ID Preview</h4>
+          </div>
+          <span class="preview-status"><span></span> Preview</span>
+        </div>
+        <div class="preview-card">
+          <div class="pc-header">
+            <div class="pc-emblem" aria-hidden="true">MEDAR</div>
+            <div class="pc-brand">
+              <strong>MIGRANT EMPLOYEES,</strong>
+              <span>DIASPORA AND RETURNEES</span>
+            </div>
+          </div>
+          <div class="pc-body">
+            <div class="pc-avatar" aria-hidden="true">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            </div>
+            <div class="pc-details">
+              <span class="pc-member-label">MEMBER NAME</span>
+              <strong class="pc-member-name" id="pName">Your name</strong>
+              <div class="pc-meta">
+                <p><span>COUNTRY</span><strong id="pCountry">-</strong></p>
+                <p><span>MEMBER TYPE</span><strong id="pStatus">-</strong></p>
+              </div>
+            </div>
+          </div>
+          <div class="pc-footer">
+            <span>MEMBER ID</span>
+            <strong id="pID">MEDAR-XXXX-XXXX</strong>
+            <span class="pc-valid">● ACTIVE</span>
+          </div>
+          <div class="pc-motto">WE CARE <span>·</span> WE SUPPORT <span>·</span> WE EMPOWER</div>
+        </div>
+      </div>
+
+      <div class="benefits">
+        <h4>What You Get After Registration:</h4>
+         <ul>
+           <li>Instant Member ID (MEDAR-XXXX)</li>
+           <li>Access to 9 support services</li>
+           <li>Airport pickup & Legal help</li>
+           <li>WhatsApp support group</li>
+           <li>Investment back home (land & rental)</li>
+           <li>Counseling for returnees</li>
+         </ul>
+        <div class="contact-mini">
+          <strong>Need Help?</strong><br>
+          WhatsApp: 966534844856<br>
+          Calling: 0772601346<br>
+          Kitara Trading Center, Kanyanya
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<footer class="footer">
+  <div class="footer-inner">
+    <div class="footer-brand">
+      <div class="logo">
+        <div>
+          <strong>MIGRANT EMPLOYEES,</strong><br>
+          <span>DIASPORA AND RETURNEES</span>
+        </div>
+      </div>
+      <p>We Care. We Support. We Empower.</p>
+    </div>
+    <div class="footer-links">
+      <h4>Quick Links</h4>
+      <ul>
+        <li><a href="index.html">Home</a></li>
+        <li><a href="about.html">About Us</a></li>
+        <li><a href="activity.html">Our Activities</a></li>
+        <li><a href="signup.html">Create an Account</a></li>
+        <li><a href="contact.html">Contact Us</a></li>
+      </ul>
+    </div>
+    <div class="footer-contact">
+      <h4>Contact Us</h4>
+      <p><strong>WhatsApp:</strong> 966534844856 / +256752068795</p>
+      <p><strong>Call:</strong> 0772601346 / 0752068795</p>
+      <p><strong>Email:</strong> egessaphilip@gmail.com</p>
+      <p><strong>Location:</strong> KITARA TRADING CENTER, Kanyanya-komambogga, Kawempe</p>
+    </div>
+  </div>
+  <div class="footer-bottom">
+    <p>© 2024 Migrant Employees, Diaspora and Returnees. All rights reserved.</p>
+  </div>
+</footer>
+<script src="member.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

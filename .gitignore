@@ -1,0 +1,6 @@
+.venv/
+.env
+__pycache__/
+*.py[cod]
+backend/data/
+backend/private-uploads/

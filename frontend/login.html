@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Log In | Migrant Employees, Diaspora and Returnees</title>
+  <link rel="stylesheet" href="style.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+<header class="header">
+  <div class="logo"><div><strong>MIGRANT EMPLOYEES,</strong><br><span>DIASPORA AND RETURNEES</span></div></div>
+  <nav class="nav">
+    <button class="menu-toggle" onclick="toggleMenu()">☰</button>
+    <div class="nav-links">
+      <button class="nav-close" onclick="toggleMenu()">×</button>
+      <a href="index.html">Home</a>
+      <a href="about.html">About</a>
+      <a href="activity.html">Our Activities</a>
+      <a href="signup.html">Create Account</a>
+      <a href="login.html" class="active">Log In</a>
+      <a href="contact.html" class="btn-gold">Get Support</a>
+    </div>
+  </nav>
+</header>
+
+<main class="auth-section">
+  <section class="auth-card" aria-labelledby="loginTitle">
+    <span class="auth-kicker">Welcome back</span>
+    <h1 id="loginTitle">Log in to your account</h1>
+    <p class="auth-description">Log in to continue or complete your membership application.</p>
+    <form id="loginForm" class="auth-form">
+      <div class="form-field">
+        <label for="email">Email address</label>
+        <input type="email" id="email" name="email" autocomplete="email" required maxlength="254">
+      </div>
+      <div class="form-field">
+        <label for="password">Password</label>
+        <div class="password-input-wrap">
+          <input type="password" id="password" name="password" autocomplete="current-password" required maxlength="72">
+          <button class="password-toggle" type="button" aria-label="Show password" aria-pressed="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"></path>
+              <circle cx="12" cy="12" r="3"></circle>
+              <path class="password-toggle-slash" d="m3 3 18 18"></path>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <p class="auth-error" id="authError" role="alert" hidden></p>
+      <button class="submit-btn" type="submit">Log In</button>
+    </form>
+    <p class="auth-switch">New here? <a href="signup.html">Create an account</a></p>
+  </section>
+</main>
+
+<script src="auth.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
