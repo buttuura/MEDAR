@@ -8,8 +8,9 @@ document.getElementById('fullName').addEventListener('input', event => {
 document.getElementById('country').addEventListener('change', event => {
   document.getElementById('pCountry').textContent = event.target.value || '-';
 });
-document.getElementById('memberStatus').addEventListener('change', event => {
-  document.getElementById('pStatus').textContent = event.target.value || '-';
+document.getElementById('membershipType').addEventListener('change', event => {
+  const membershipTypes = { member: 'Member', donor: 'Donor', investor: 'Investor' };
+  document.getElementById('pStatus').textContent = membershipTypes[event.target.value] || '-';
 });
 
 const identityDocumentInput = document.getElementById('identityDocument');
@@ -127,6 +128,7 @@ registrationForm.addEventListener('submit', async event => {
     country: document.getElementById('country').value,
     city: document.getElementById('city').value.trim(),
     status: document.getElementById('memberStatus').value,
+    membershipType: document.getElementById('membershipType').value,
     agency: document.getElementById('agency').value.trim(),
     servicesNeeded: Array.from(document.querySelectorAll('.checkbox-grid input:checked'))
       .map(checkbox => checkbox.value),

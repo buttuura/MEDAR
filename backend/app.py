@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from pymongo import ASCENDING, MongoClient
@@ -28,6 +29,11 @@ UPLOAD_DIR = Path(
 ).expanduser().resolve()
 MONGODB_URI = os.environ.get("MONGODB_URI", "").strip()
 MONGODB_DATABASE = os.environ.get("MONGODB_DATABASE", "medar").strip()
+ADMIN_EMAILS = {
+    email.strip().lower()
+    for email in os.environ.get("MEDAR_ADMIN_EMAILS", "").split(",")
+    if email.strip()
+}
 COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "false").lower() == "true"
 SESSION_COOKIE = "medar_session"
 SESSION_TTL_SECONDS = 14 * 24 * 60 * 60
@@ -43,7 +49,7 @@ mongo_database: Database | None = None
 class SignupPayload(BaseModel):
     full_name: str = Field(alias="fullName", min_length=2, max_length=120)
     email: str = Field(min_length=3, max_length=254)
-    password: str = Field(min_length=12, max_length=72)
+    password: str = Field(min_length=6, max_length=72)
 
 
 class LoginPayload(BaseModel):
@@ -204,6 +210,13 @@ def require_user(
     return user
 
 
+def require_admin(request: Request, database: Database) -> dict[str, Any]:
+    user = require_user(request, database)
+    if user["email"] not in ADMIN_EMAILS:
+        raise HTTPException(status_code=403, detail="Group administrator access required.")
+    return user
+
+
 @app.get("/api/auth/csrf")
 def csrf_token(
     request: Request,
@@ -221,7 +234,12 @@ def current_account(
     request: Request, database: Database = Depends(get_database)
 ) -> dict[str, Any]:
     user = require_user(request, database)
-    return {"id": str(user["_id"]), "fullName": user["full_name"], "email": user["email"]}
+    return {
+        "id": str(user["_id"]),
+        "fullName": user["full_name"],
+        "email": user["email"],
+        "isAdmin": user["email"] in ADMIN_EMAILS,
+    }
 
 
 @app.post("/api/auth/logout")
@@ -325,6 +343,7 @@ def validate_application(raw_payload: str, user: dict[str, Any]) -> dict[str, An
         "country": required_text(payload, "country", 80),
         "city": optional_text(payload, "city", 120),
         "status": required_text(payload, "status", 80),
+        "membershipType": payload.get("membershipType", "member"),
         "agency": optional_text(payload, "agency", 160),
         "additionalInformation": optional_text(payload, "additionalInformation", 5000),
         "emergencyName": optional_text(payload, "emergencyName", 120),
@@ -346,6 +365,11 @@ def validate_application(raw_payload: str, user: dict[str, Any]) -> dict[str, An
         "Migrant Employee Abroad", "Diaspora", "Returnee", "Family Member of Migrant",
     }:
         raise HTTPException(status_code=422, detail="Choose a valid membership status.")
+    if (
+        not isinstance(normalized["membershipType"], str)
+        or normalized["membershipType"] not in {"member", "donor", "investor"}
+    ):
+        raise HTTPException(status_code=422, detail="Choose a valid membership type.")
     if normalized["email"] != user["email"]:
         raise HTTPException(status_code=422, detail="Application email must match your account.")
     if normalized["fullName"] != user["full_name"]:
@@ -395,6 +419,108 @@ def current_application(
     if not application:
         return {"submitted": False}
     return {"submitted": True, "memberId": application["member_id"]}
+
+
+@app.get("/api/admin/members")
+def list_members_for_admin(
+    request: Request, database: Database = Depends(get_database)
+) -> dict[str, list[dict[str, Any]]]:
+    require_admin(request, database)
+    applications = list(
+        database.applications.find(
+            {},
+            {
+                "user_id": 1,
+                "member_id": 1,
+                "payload.fullName": 1,
+                "payload.country": 1,
+                "payload.status": 1,
+                "payload.membershipType": 1,
+                "submitted_at": 1,
+            },
+        ).sort("submitted_at", -1)
+    )
+    users = {
+        user["_id"]: user
+        for user in database.users.find(
+            {"_id": {"$in": [application["user_id"] for application in applications]}},
+            {"full_name": 1, "email": 1},
+        )
+    }
+    return {
+        "members": [
+            {
+                "memberId": application["member_id"],
+                "fullName": users.get(application["user_id"], {}).get(
+                    "full_name", application.get("payload", {}).get("fullName", "")
+                ),
+                "email": users.get(application["user_id"], {}).get("email", ""),
+                "country": application.get("payload", {}).get("country", ""),
+                "memberStatus": application.get("payload", {}).get("status", ""),
+                "membershipType": application.get("payload", {}).get(
+                    "membershipType", "member"
+                ),
+                "submittedAt": application.get("submitted_at"),
+            }
+            for application in applications
+        ]
+    }
+
+
+@app.patch("/api/admin/members/{member_id}")
+def update_member_type(
+    member_id: str,
+    payload: dict[str, Any],
+    request: Request,
+    database: Database = Depends(get_database),
+) -> dict[str, str]:
+    session = validate_csrf(database, request)
+    admin = require_admin(request, database)
+    if session["user_id"] != admin["_id"]:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+    membership_type = payload.get("membershipType")
+    if (
+        not isinstance(membership_type, str)
+        or membership_type not in {"member", "donor", "investor"}
+    ):
+        raise HTTPException(status_code=422, detail="Choose a valid membership type.")
+    result = database.applications.update_one(
+        {"member_id": member_id},
+        {"$set": {"payload.membershipType": membership_type}},
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Member not found.")
+    return {"message": "Member type updated successfully."}
+
+
+@app.delete("/api/admin/members/{member_id}")
+def delete_member(
+    member_id: str,
+    request: Request,
+    database: Database = Depends(get_database),
+) -> dict[str, str]:
+    session = validate_csrf(database, request)
+    admin = require_admin(request, database)
+    if session["user_id"] != admin["_id"]:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+    application = database.applications.find_one(
+        {"member_id": member_id}, {"documents.storageName": 1}
+    )
+    if not application:
+        raise HTTPException(status_code=404, detail="Member not found.")
+    stored_files = []
+    for document in application.get("documents", []):
+        storage_name = document.get("storageName")
+        if not isinstance(storage_name, str) or Path(storage_name).name != storage_name:
+            raise RuntimeError("Stored membership document has an invalid filename.")
+        stored_file = (UPLOAD_DIR / storage_name).resolve()
+        if stored_file.parent != UPLOAD_DIR:
+            raise RuntimeError("Stored membership document is outside the upload directory.")
+        stored_files.append(stored_file)
+    database.applications.delete_one({"_id": application["_id"]})
+    for stored_file in stored_files:
+        stored_file.unlink(missing_ok=True)
+    return {"message": "Membership application deleted successfully."}
 
 
 @app.post("/api/members")
@@ -485,5 +611,23 @@ async def submit_application(
 
 if not FRONTEND_DIR.is_dir():
     raise RuntimeError(f"Frontend directory does not exist: {FRONTEND_DIR}")
+
+
+@app.get("/admin-members.html")
+def admin_members_page(
+    request: Request, database: Database = Depends(get_database)
+) -> Response:
+    try:
+        require_admin(request, database)
+    except HTTPException as error:
+        if error.status_code == 401:
+            return RedirectResponse(
+                "/login.html?next=%2Fadmin-members.html", status_code=303
+            )
+        if error.status_code == 403:
+            return RedirectResponse("/index.html", status_code=303)
+        raise
+    return FileResponse(FRONTEND_DIR / "admin-members.html")
+
 
 app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")

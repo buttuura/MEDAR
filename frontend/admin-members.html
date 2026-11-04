@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Manage Members | Migrant Employees, Diaspora and Returnees</title>
+  <link rel="stylesheet" href="style.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+<header class="header">
+  <div class="logo"><div><strong>MIGRANT EMPLOYEES,</strong><br><span>DIASPORA AND RETURNEES</span></div></div>
+  <nav class="nav">
+    <button class="menu-toggle" onclick="toggleMenu()">☰</button>
+    <div class="nav-links">
+      <button class="nav-close" onclick="toggleMenu()">×</button>
+      <a href="index.html">Home</a>
+      <a href="about.html">About</a>
+      <a href="activity.html">Our Activities</a>
+      <a href="login.html">Log In</a>
+      <a href="admin-members.html" class="active">Manage Members</a>
+      <a href="contact.html" class="btn-gold">Get Support</a>
+    </div>
+  </nav>
+</header>
+
+<main class="admin-page">
+  <section class="admin-heading">
+    <span class="section-badge">Group administration</span>
+    <h1>Joined Members</h1>
+    <p>Review membership applications, change a member's type, or remove an application.</p>
+  </section>
+  <p class="admin-message" id="adminMessage" role="status" aria-live="polite" hidden></p>
+  <section class="admin-card" aria-labelledby="membersHeading">
+    <div class="admin-card-heading">
+      <div>
+        <h2 id="membersHeading">Membership applications</h2>
+        <p id="memberCount">Loading members…</p>
+      </div>
+      <button class="admin-refresh" id="refreshMembers" type="button">Refresh</button>
+    </div>
+    <div class="admin-table-wrap">
+      <table class="member-table">
+        <thead>
+          <tr>
+            <th scope="col">Member</th>
+            <th scope="col">Member ID</th>
+            <th scope="col">Country / status</th>
+            <th scope="col">Joined as</th>
+            <th scope="col">Joined on</th>
+            <th scope="col"><span class="visually-hidden">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody id="membersTableBody"></tbody>
+      </table>
+    </div>
+    <p class="admin-empty" id="membersEmpty" hidden>No membership applications have been submitted yet.</p>
+  </section>
+</main>
+
+<script src="admin-members.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

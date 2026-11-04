@@ -22,10 +22,14 @@ const memberNavigationLinks = document.querySelectorAll(
   '.nav-links a[href="become-member.html"]'
 );
 const loginNavigationLinks = document.querySelectorAll('.nav-links a[href="login.html"]');
+let adminNavigationLinks = document.querySelectorAll(
+  '.nav-links a[href="admin-members.html"]'
+);
 
 fetch('/api/auth/me')
-  .then(response => {
+  .then(async response => {
     if (response.ok) {
+      const account = await response.json();
       memberNavigationLinks.forEach(link => link.removeAttribute('hidden'));
       loginNavigationLinks.forEach(link => {
         link.textContent = 'Log Out';
@@ -55,6 +59,21 @@ fetch('/api/auth/me')
           }
         });
       });
+      if (account.isAdmin) {
+        if (!adminNavigationLinks.length) {
+          document.querySelectorAll('.nav-links').forEach(links => {
+            const adminLink = document.createElement('a');
+            adminLink.href = 'admin-members.html';
+            adminLink.textContent = 'Manage Members';
+            const supportLink = links.querySelector('.btn-gold');
+            links.insertBefore(adminLink, supportLink);
+          });
+          adminNavigationLinks = document.querySelectorAll(
+            '.nav-links a[href="admin-members.html"]'
+          );
+        }
+        adminNavigationLinks.forEach(link => link.removeAttribute('hidden'));
+      }
     } else if (response.status !== 401) {
       console.error('Unable to verify the account before updating navigation.');
     }

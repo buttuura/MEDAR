@@ -15,6 +15,7 @@ Create a file named `.env` in the project root (next to `README.md`). You can co
 ```dotenv
 MONGODB_URI=mongodb+srv://medar_org:<db_password>@cluster0.od3sa0a.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0
 MONGODB_DATABASE=medar
+MEDAR_ADMIN_EMAILS=group-admin@example.com
 ```
 
 In Atlas, ensure your database user's password is correct and your current IP address is allowed in Network Access. Then start the FastAPI backend (it serves both the API and website on the same origin):
@@ -26,6 +27,8 @@ python -m uvicorn backend.app:app --reload --host 127.0.0.1 --port 8080
 Open `http://localhost:8080`. Do not open the HTML files directly from disk. The backend connects to the configured MongoDB database and stores uploaded document metadata there; the files themselves remain under `backend\private-uploads`, outside the public frontend directory. Set `MONGODB_DATABASE` to select another database or `UPLOAD_DIR` to change the document storage location. Existing SQLite records are not automatically migrated to MongoDB.
 
 The FastAPI backend provides the frontend's signup, login, account, and membership endpoints. It uses cookie-based sessions with CSRF tokens, hashes passwords, validates membership submissions, and stores account, session, and application records in MongoDB.
+
+Set `MEDAR_ADMIN_EMAILS` to a comma-separated list of account email addresses that should manage membership applications, then create accounts with those email addresses. Only those signed-in accounts can list, update, or delete member applications. Leave the setting empty to disable admin access. Members can apply as a member, donor, or investor; an administrator can change this type from the Manage Members page.
 
 ## Production deployment
 

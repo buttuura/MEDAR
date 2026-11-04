@@ -300,7 +300,37 @@ body{color:var(--text);line-height:1.6}
 .member-form-message{padding:11px 13px;border-left:3px solid #16803c;border-radius:6px;background:#edf9f0;color:#145c2e;font-size:13px;line-height:1.5}
 .member-form-message.auth-error{border-color:#b42318;background:#fff0ee;color:#8f1d14}
 .member-form-message[hidden]{display:none}
+.membership-choice{margin:8px 0 18px}
+.membership-choice small{color:#777184;font-size:11px}
+.admin-page{min-height:70vh;padding:54px 32px 80px;background:linear-gradient(180deg,#fbf9ff,#f3e8ff)}
+.admin-heading,.admin-card{max-width:1180px;margin:0 auto}
+.admin-heading{margin-bottom:28px}
+.admin-heading h1{color:#32105f;font-size:clamp(30px,4vw,42px);line-height:1.2}
+.admin-heading p,.admin-card-heading p{margin-top:8px;color:#666071}
+.admin-message{max-width:1180px;margin:0 auto 18px;padding:12px 15px;border-left:3px solid #16803c;border-radius:6px;background:#edf9f0;color:#145c2e;font-size:13px}
+.admin-message[hidden]{display:none}
+.admin-message.auth-error{border-color:#b42318;background:#fff0ee;color:#8f1d14}
+.admin-card{overflow:hidden;padding:24px;background:white;border:1px solid rgba(75,26,138,.08);border-radius:18px;box-shadow:0 18px 45px rgba(48,18,87,.09)}
+.admin-card-heading{display:flex;align-items:center;justify-content:space-between;gap:18px;margin-bottom:18px}
+.admin-card-heading h2{color:#32105f;font-size:20px}
+.admin-refresh,.member-save,.member-delete{padding:9px 13px;border:0;border-radius:8px;font:inherit;font-size:12px;font-weight:700;cursor:pointer}
+.admin-refresh{background:#f2eafd;color:var(--purple)}
+.member-table-wrap{overflow-x:auto}
+.member-table{width:100%;border-collapse:collapse;text-align:left}
+.member-table th,.member-table td{padding:14px 12px;border-bottom:1px solid #eee9f5;vertical-align:middle}
+.member-table th{color:#666071;font-size:11px;letter-spacing:.04em;text-transform:uppercase}
+.member-table td{color:#252033;font-size:13px}
+.member-table td strong,.member-email{display:block}
+.member-email{margin-top:3px;color:#777184;font-size:11px;overflow-wrap:anywhere}
+.member-type-select{min-width:110px;padding:9px;border:1px solid #ddd6e8;border-radius:8px;background:white;font:inherit;font-size:12px}
+.member-actions{white-space:nowrap}
+.member-save{background:var(--purple);color:white}
+.member-delete{margin-left:7px;background:#fff0ee;color:#8f1d14}
+.member-save:disabled,.member-delete:disabled,.admin-refresh:disabled{opacity:.6;cursor:wait}
+.admin-empty{padding:28px 10px;text-align:center;color:#666071}
+.visually-hidden{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 @media(max-width:900px){.form-container{grid-template-columns:1fr}.two-col,.checkbox-grid{grid-template-columns:1fr}}
+@media(max-width:700px){.admin-page{padding:40px 18px 56px}.admin-card{padding:18px 14px}.admin-card-heading{align-items:flex-start}.member-table{min-width:850px}}
 @media(max-width:900px){
   .about-intro{grid-template-columns:1fr;gap:36px}
   .mid-cards{grid-template-columns:repeat(2,minmax(0,1fr))}
