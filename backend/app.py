@@ -57,6 +57,10 @@ class LoginPayload(BaseModel):
     password: str = Field(min_length=1, max_length=72)
 
 
+class AdminEmailPayload(BaseModel):
+    email: str = Field(min_length=3, max_length=254)
+
+
 def get_database() -> Database:
     if mongo_database is None:
         raise RuntimeError("MongoDB has not been initialized.")
@@ -203,7 +207,7 @@ def require_user(
         raise HTTPException(status_code=401, detail="Authentication required.")
     user = database.users.find_one(
         {"_id": session["user_id"]},
-        {"full_name": 1, "email": 1},
+        {"full_name": 1, "email": 1, "is_admin": 1},
     )
     if not user:
         raise HTTPException(status_code=401, detail="Authentication required.")
@@ -212,8 +216,15 @@ def require_user(
 
 def require_admin(request: Request, database: Database) -> dict[str, Any]:
     user = require_user(request, database)
-    if user["email"] not in ADMIN_EMAILS:
+    if user["email"] not in ADMIN_EMAILS and not user.get("is_admin", False):
         raise HTTPException(status_code=403, detail="Group administrator access required.")
+    return user
+
+
+def require_super_admin(request: Request, database: Database) -> dict[str, Any]:
+    user = require_user(request, database)
+    if user["email"] not in ADMIN_EMAILS:
+        raise HTTPException(status_code=403, detail="Super administrator access required.")
     return user
 
 
@@ -238,7 +249,8 @@ def current_account(
         "id": str(user["_id"]),
         "fullName": user["full_name"],
         "email": user["email"],
-        "isAdmin": user["email"] in ADMIN_EMAILS,
+        "isAdmin": user["email"] in ADMIN_EMAILS or user.get("is_admin", False),
+        "isSuperAdmin": user["email"] in ADMIN_EMAILS,
     }
 
 
@@ -465,6 +477,75 @@ def list_members_for_admin(
             for application in applications
         ]
     }
+
+
+@app.get("/api/admin/admins")
+def list_admins(
+    request: Request, database: Database = Depends(get_database)
+) -> dict[str, list[dict[str, str]]]:
+    require_super_admin(request, database)
+    configured_admins = [
+        {"email": email, "fullName": "Super administrator", "role": "super"}
+        for email in sorted(ADMIN_EMAILS)
+    ]
+    managed_admins = [
+        {"email": user["email"], "fullName": user.get("full_name", ""), "role": "admin"}
+        for user in database.users.find(
+            {"is_admin": True, "email": {"$nin": list(ADMIN_EMAILS)}},
+            {"email": 1, "full_name": 1},
+        ).sort("email", 1)
+    ]
+    return {"admins": configured_admins + managed_admins}
+
+
+@app.post("/api/admin/admins")
+def grant_admin_access(
+    payload: AdminEmailPayload,
+    request: Request,
+    database: Database = Depends(get_database),
+) -> dict[str, str]:
+    session = validate_csrf(database, request)
+    super_admin = require_super_admin(request, database)
+    if session["user_id"] != super_admin["_id"]:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+    email = normalize_email(payload.email)
+    if email in ADMIN_EMAILS:
+        raise HTTPException(status_code=409, detail="This account is already a super administrator.")
+    user = database.users.find_one({"email": email}, {"_id": 1, "is_admin": 1})
+    if not user:
+        raise HTTPException(
+            status_code=404,
+            detail="No account uses this email yet. Ask them to create an account first.",
+        )
+    if user.get("is_admin", False):
+        raise HTTPException(status_code=409, detail="This account is already an administrator.")
+    database.users.update_one({"_id": user["_id"]}, {"$set": {"is_admin": True}})
+    return {"message": "Administrator access granted."}
+
+
+@app.delete("/api/admin/admins/{email}")
+def revoke_admin_access(
+    email: str,
+    request: Request,
+    database: Database = Depends(get_database),
+) -> dict[str, str]:
+    session = validate_csrf(database, request)
+    super_admin = require_super_admin(request, database)
+    if session["user_id"] != super_admin["_id"]:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+    normalized_email = normalize_email(email)
+    if normalized_email in ADMIN_EMAILS:
+        raise HTTPException(
+            status_code=403,
+            detail="Super administrator access is managed through the deployment environment.",
+        )
+    result = database.users.update_one(
+        {"email": normalized_email, "is_admin": True},
+        {"$unset": {"is_admin": ""}},
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Managed administrator not found.")
+    return {"message": "Administrator access revoked."}
 
 
 @app.patch("/api/admin/members/{member_id}")

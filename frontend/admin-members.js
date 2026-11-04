@@ -2,6 +2,10 @@ const adminMessage = document.getElementById('adminMessage');
 const membersTableBody = document.getElementById('membersTableBody');
 const membersEmpty = document.getElementById('membersEmpty');
 const memberCount = document.getElementById('memberCount');
+const adminAccessSection = document.getElementById('adminAccessSection');
+const adminList = document.getElementById('adminList');
+const adminAccessForm = document.getElementById('adminAccessForm');
+const grantAdminButton = document.getElementById('grantAdminButton');
 const membershipTypeLabels = {
   member: 'Member',
   donor: 'Donor',
@@ -152,6 +156,55 @@ async function loadMembers() {
   membersEmpty.hidden = members.length > 0;
 }
 
+function createAdminEntry(admin) {
+  const entry = document.createElement('li');
+  const identity = document.createElement('div');
+  const name = document.createElement('strong');
+  const email = document.createElement('span');
+  const role = document.createElement('span');
+  name.textContent = admin.fullName || admin.email;
+  email.className = 'member-email';
+  email.textContent = admin.email;
+  role.className = 'admin-role';
+  role.textContent = admin.role === 'super' ? 'Super admin' : 'Admin';
+  identity.append(name, email);
+  entry.append(identity, role);
+
+  if (admin.role === 'admin') {
+    const revokeButton = document.createElement('button');
+    revokeButton.type = 'button';
+    revokeButton.className = 'member-delete';
+    revokeButton.textContent = 'Remove access';
+    revokeButton.addEventListener('click', async () => {
+      if (!window.confirm(`Remove administrator access from ${admin.email}?`)) return;
+      revokeButton.disabled = true;
+      try {
+        const csrfToken = await getCsrfToken();
+        const response = await fetch(
+          `/api/admin/admins/${encodeURIComponent(admin.email)}`,
+          { method: 'DELETE', headers: { 'X-XSRF-TOKEN': csrfToken } }
+        );
+        await readResponse(response);
+        showAdminMessage(`Administrator access was removed from ${admin.email}.`);
+        await loadAdmins();
+      } catch (error) {
+        showAdminMessage(error.message || 'Unable to remove administrator access.', true);
+      } finally {
+        revokeButton.disabled = false;
+      }
+    });
+    entry.append(revokeButton);
+  }
+  return entry;
+}
+
+async function loadAdmins() {
+  adminList.replaceChildren();
+  const response = await fetch('/api/admin/admins');
+  const result = await readResponse(response);
+  result.admins.forEach(admin => adminList.append(createAdminEntry(admin)));
+}
+
 async function initializeAdminPage() {
   const accountResponse = await fetch('/api/auth/me');
   if (accountResponse.status === 401) {
@@ -163,8 +216,37 @@ async function initializeAdminPage() {
     window.location.replace('/index.html');
     return;
   }
+  if (account.isSuperAdmin) {
+    adminAccessSection.hidden = false;
+    await loadAdmins();
+  }
   await loadMembers();
 }
+
+adminAccessForm.addEventListener('submit', async event => {
+  event.preventDefault();
+  grantAdminButton.disabled = true;
+  adminMessage.hidden = true;
+  try {
+    const csrfToken = await getCsrfToken();
+    const response = await fetch('/api/admin/admins', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-XSRF-TOKEN': csrfToken
+      },
+      body: JSON.stringify({ email: document.getElementById('adminEmail').value.trim() })
+    });
+    await readResponse(response);
+    adminAccessForm.reset();
+    showAdminMessage('Administrator access granted.');
+    await loadAdmins();
+  } catch (error) {
+    showAdminMessage(error.message || 'Unable to grant administrator access.', true);
+  } finally {
+    grantAdminButton.disabled = false;
+  }
+});
 
 document.getElementById('refreshMembers').addEventListener('click', () => {
   adminMessage.hidden = true;

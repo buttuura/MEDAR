@@ -31,6 +31,21 @@
     <p>Review membership applications, change a member's type, or remove an application.</p>
   </section>
   <p class="admin-message" id="adminMessage" role="status" aria-live="polite" hidden></p>
+  <section class="admin-card admin-access-card" id="adminAccessSection" aria-labelledby="adminAccessHeading" hidden>
+    <div class="admin-card-heading">
+      <div>
+        <h2 id="adminAccessHeading">Administrator access</h2>
+        <p>Grant access to a registered account or remove a managed administrator.</p>
+      </div>
+    </div>
+    <form class="admin-access-form" id="adminAccessForm">
+      <label for="adminEmail">Account email</label>
+      <input type="email" id="adminEmail" name="email" required maxlength="254" placeholder="name@example.com">
+      <button class="member-save" type="submit" id="grantAdminButton">Make administrator</button>
+    </form>
+    <p class="admin-access-help">The person must create an account with this email before you can grant access. Super administrators configured by the service owner cannot be removed here.</p>
+    <ul class="admin-list" id="adminList" aria-live="polite"></ul>
+  </section>
   <section class="admin-card" aria-labelledby="membersHeading">
     <div class="admin-card-heading">
       <div>
