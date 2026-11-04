@@ -54,6 +54,15 @@
       </div>
       <button class="admin-refresh" id="refreshMembers" type="button">Refresh</button>
     </div>
+    <div class="member-list-controls">
+      <label class="visually-hidden" for="memberSearch">Search members</label>
+      <input id="memberSearch" type="search" placeholder="Search name, email, ID, country…">
+      <span id="memberPageStatus" aria-live="polite"></span>
+      <div class="member-pagination" aria-label="Member list pages">
+        <button class="admin-refresh" id="previousMembersPage" type="button" disabled>Previous</button>
+        <button class="admin-refresh" id="nextMembersPage" type="button" disabled>Next</button>
+      </div>
+    </div>
     <div class="admin-table-wrap">
       <table class="member-table">
         <thead>

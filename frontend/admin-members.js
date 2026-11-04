@@ -6,6 +6,13 @@ const adminAccessSection = document.getElementById('adminAccessSection');
 const adminList = document.getElementById('adminList');
 const adminAccessForm = document.getElementById('adminAccessForm');
 const grantAdminButton = document.getElementById('grantAdminButton');
+const memberSearch = document.getElementById('memberSearch');
+const memberPageStatus = document.getElementById('memberPageStatus');
+const previousMembersPage = document.getElementById('previousMembersPage');
+const nextMembersPage = document.getElementById('nextMembersPage');
+const membersPerPage = 20;
+let allMembers = [];
+let currentMembersPage = 1;
 const membershipTypeLabels = {
   member: 'Member',
   donor: 'Donor',
@@ -33,9 +40,10 @@ async function getCsrfToken() {
   return (await readResponse(response)).token;
 }
 
-function createCell(text, className = '') {
+function createCell(text, className = '', label = '') {
   const cell = document.createElement('td');
   if (className) cell.className = className;
+  if (label) cell.dataset.label = label;
   cell.textContent = text || '—';
   return cell;
 }
@@ -48,11 +56,24 @@ function createMemberRow(member) {
   memberName.textContent = member.fullName || 'Unnamed member';
   memberEmail.className = 'member-email';
   memberEmail.textContent = member.email || 'No email';
-  memberCell.append(memberName, memberEmail);
+  memberCell.className = 'member-summary';
+  const memberDetails = document.createElement('div');
+  memberDetails.append(memberName, memberEmail);
+  const detailsButton = document.createElement('button');
+  detailsButton.type = 'button';
+  detailsButton.className = 'member-details-toggle';
+  detailsButton.textContent = 'Show details';
+  detailsButton.setAttribute('aria-expanded', 'false');
+  memberCell.append(memberDetails, detailsButton);
   row.append(memberCell);
-  row.append(createCell(member.memberId));
+  const memberIdCell = createCell(member.memberId, 'mobile-member-detail', 'Member ID');
+  memberIdCell.dataset.memberDetail = '';
+  row.append(memberIdCell);
 
   const locationCell = document.createElement('td');
+  locationCell.className = 'mobile-member-detail';
+  locationCell.dataset.memberDetail = '';
+  locationCell.dataset.label = 'Country / status';
   const country = document.createElement('strong');
   const status = document.createElement('span');
   country.textContent = member.country || '—';
@@ -74,16 +95,23 @@ function createMemberRow(member) {
   typeSelect.value = membershipTypeLabels[member.membershipType]
     ? member.membershipType
     : 'member';
+  typeCell.className = 'mobile-member-detail';
+  typeCell.dataset.memberDetail = '';
+  typeCell.dataset.label = 'Joined as';
   typeCell.append(typeSelect);
   row.append(typeCell);
 
   const joined = member.submittedAt ? new Date(member.submittedAt) : null;
-  row.append(createCell(joined && !Number.isNaN(joined.getTime())
+  const joinedCell = createCell(joined && !Number.isNaN(joined.getTime())
     ? joined.toLocaleDateString()
-    : '—'));
+    : '—', 'mobile-member-detail', 'Joined on');
+  joinedCell.dataset.memberDetail = '';
+  row.append(joinedCell);
 
   const actionsCell = document.createElement('td');
-  actionsCell.className = 'member-actions';
+  actionsCell.className = 'member-actions mobile-member-detail';
+  actionsCell.dataset.memberDetail = '';
+  actionsCell.dataset.label = 'Actions';
   const saveButton = document.createElement('button');
   saveButton.type = 'button';
   saveButton.className = 'member-save';
@@ -141,7 +169,51 @@ function createMemberRow(member) {
   });
   actionsCell.append(saveButton, deleteButton);
   row.append(actionsCell);
+
+  detailsButton.addEventListener('click', () => {
+    const expanded = detailsButton.getAttribute('aria-expanded') === 'true';
+    detailsButton.setAttribute('aria-expanded', String(!expanded));
+    detailsButton.textContent = expanded ? 'Show details' : 'Hide details';
+    row.querySelectorAll('[data-member-detail]').forEach(cell => {
+      cell.hidden = expanded;
+    });
+  });
+  setMemberRowCompact(row);
   return row;
+}
+
+function setMemberRowCompact(row) {
+  const compact = window.matchMedia('(max-width: 700px)').matches;
+  row.querySelectorAll('[data-member-detail]').forEach(cell => {
+    cell.hidden = compact &&
+      row.querySelector('.member-details-toggle').getAttribute('aria-expanded') !== 'true';
+  });
+}
+
+function renderMembers() {
+  const searchTerm = memberSearch.value.trim().toLocaleLowerCase();
+  const filteredMembers = allMembers.filter(member => [
+    member.fullName,
+    member.email,
+    member.memberId,
+    member.country,
+    member.memberStatus,
+    membershipTypeLabels[member.membershipType]
+  ].some(value => String(value || '').toLocaleLowerCase().includes(searchTerm)));
+  const pageCount = Math.ceil(filteredMembers.length / membersPerPage);
+  currentMembersPage = Math.min(currentMembersPage, Math.max(pageCount, 1));
+  const firstMember = (currentMembersPage - 1) * membersPerPage;
+  const visibleMembers = filteredMembers.slice(firstMember, firstMember + membersPerPage);
+  membersTableBody.replaceChildren(...visibleMembers.map(createMemberRow));
+  memberPageStatus.textContent = filteredMembers.length
+    ? `Showing ${firstMember + 1}–${firstMember + visibleMembers.length} of ${filteredMembers.length}`
+    : 'No matching members';
+  previousMembersPage.disabled = currentMembersPage <= 1;
+  nextMembersPage.disabled = currentMembersPage >= pageCount;
+  membersEmpty.textContent = searchTerm && filteredMembers.length === 0
+    ? 'No members match your search.'
+    : 'No membership applications have been submitted yet.';
+  membersEmpty.hidden = filteredMembers.length > 0;
 }
 
 async function loadMembers() {
@@ -150,10 +222,10 @@ async function loadMembers() {
   memberCount.textContent = 'Loading members…';
   const response = await fetch('/api/admin/members');
   const result = await readResponse(response);
-  const members = result.members;
-  members.forEach(member => membersTableBody.append(createMemberRow(member)));
-  memberCount.textContent = `${members.length} ${members.length === 1 ? 'member' : 'members'}`;
-  membersEmpty.hidden = members.length > 0;
+  allMembers = result.members;
+  currentMembersPage = 1;
+  memberCount.textContent = `${allMembers.length} ${allMembers.length === 1 ? 'member' : 'members'}`;
+  renderMembers();
 }
 
 function createAdminEntry(admin) {
@@ -254,6 +326,27 @@ document.getElementById('refreshMembers').addEventListener('click', () => {
     memberCount.textContent = 'Unable to load members';
     showAdminMessage(error.message || 'Unable to load membership applications.', true);
   });
+});
+
+memberSearch.addEventListener('input', () => {
+  currentMembersPage = 1;
+  renderMembers();
+});
+
+previousMembersPage.addEventListener('click', () => {
+  if (currentMembersPage > 1) {
+    currentMembersPage -= 1;
+    renderMembers();
+  }
+});
+
+nextMembersPage.addEventListener('click', () => {
+  currentMembersPage += 1;
+  renderMembers();
+});
+
+window.matchMedia('(max-width: 700px)').addEventListener('change', () => {
+  membersTableBody.querySelectorAll('tr').forEach(setMemberRowCompact);
 });
 
 initializeAdminPage().catch(error => {
