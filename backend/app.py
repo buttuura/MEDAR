@@ -1,17 +1,32 @@
 import base64
 import hashlib
 import hmac
+import io
 import json
+import logging
 import os
 import re
 import secrets
+import time
 import uuid
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.error import HTTPError, URLError
+from urllib.request import urlopen
+from urllib3.exceptions import HTTPError as Urllib3HTTPError
 
+import cloudinary
+from cloudinary import uploader as cloudinary_uploader
+from cloudinary import utils as cloudinary_utils
+from cloudinary.exceptions import Error as CloudinaryError
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
+from PIL import Image, ImageOps, UnidentifiedImageError
+from reportlab.lib.colors import HexColor, white
+from reportlab.lib.units import mm
+from reportlab.lib.utils import ImageReader
+from reportlab.pdfgen import canvas
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from pymongo import ASCENDING, MongoClient
@@ -23,6 +38,9 @@ from starlette.datastructures import UploadFile
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(ROOT_DIR / ".env")
+load_dotenv(ROOT_DIR / "backend" / ".env")
+cloudinary.reset_config()
+cloudinary.config(secure=True)
 FRONTEND_DIR = ROOT_DIR / "frontend"
 UPLOAD_DIR = Path(
     os.environ.get("UPLOAD_DIR", str(ROOT_DIR / "backend" / "private-uploads"))
@@ -39,9 +57,11 @@ SESSION_COOKIE = "medar_session"
 SESSION_TTL_SECONDS = 14 * 24 * 60 * 60
 PASSWORD_ITERATIONS = 600_000
 MAX_DOCUMENT_SIZE = 10 * 1024 * 1024
+MAX_PASSPORT_PHOTO_SIZE = 5 * 1024 * 1024
 MAX_APPLICATION_SIZE = 64 * 1024
 
 app = FastAPI(title="MEDAR API")
+logger = logging.getLogger(__name__)
 mongo_client: MongoClient | None = None
 mongo_database: Database | None = None
 
@@ -420,17 +440,271 @@ def read_upload(upload: UploadFile, allowed_extensions: set[str]) -> tuple[bytes
     return content, extension
 
 
+def normalize_passport_photo(content: bytes) -> bytes:
+    try:
+        with Image.open(io.BytesIO(content)) as image:
+            if image.format not in {"JPEG", "PNG"}:
+                raise HTTPException(status_code=400, detail="Upload a JPG or PNG passport photo.")
+            if image.width * image.height > 20_000_000:
+                raise HTTPException(status_code=400, detail="The passport photo dimensions are too large.")
+            image = ImageOps.exif_transpose(image).convert("RGB")
+            image.thumbnail((640, 800))
+            normalized = io.BytesIO()
+            image.save(normalized, format="JPEG", quality=88, optimize=True)
+            return normalized.getvalue()
+    except (UnidentifiedImageError, OSError, Image.DecompressionBombError) as error:
+        raise HTTPException(status_code=400, detail="The uploaded passport photo is not a valid image.") from error
+
+
+def require_cloudinary() -> None:
+    config = cloudinary.config()
+    if not config.cloud_name or not config.api_key or not config.api_secret:
+        raise HTTPException(
+            status_code=503,
+            detail="Passport photo storage is not configured. Set CLOUDINARY_URL in the project-root .env or backend/.env, then restart the server.",
+        )
+
+
+def upload_private_passport_photo(content: bytes) -> str:
+    require_cloudinary()
+    public_id = f"medar/member-photos/{uuid.uuid4().hex}"
+    try:
+        result = cloudinary_uploader.upload(
+            io.BytesIO(content),
+            public_id=public_id,
+            resource_type="image",
+            type="private",
+            overwrite=False,
+            unique_filename=False,
+        )
+    except (CloudinaryError, Urllib3HTTPError, TimeoutError, OSError) as error:
+        logger.exception("Cloudinary passport photo upload failed.")
+        raise HTTPException(
+            status_code=502,
+            detail="Unable to store your passport photo. Please try again.",
+        ) from error
+    uploaded_public_id = result.get("public_id") if isinstance(result, dict) else None
+    if not isinstance(uploaded_public_id, str) or not uploaded_public_id:
+        raise HTTPException(
+            status_code=502,
+            detail="Cloudinary did not confirm the passport photo upload.",
+        )
+    return uploaded_public_id
+
+
+def delete_private_passport_photo(public_id: str) -> None:
+    require_cloudinary()
+    try:
+        result = cloudinary_uploader.destroy(
+            public_id,
+            resource_type="image",
+            type="private",
+            invalidate=True,
+        )
+    except (CloudinaryError, Urllib3HTTPError, TimeoutError, OSError) as error:
+        logger.exception("Cloudinary passport photo deletion failed.")
+        raise HTTPException(
+            status_code=502,
+            detail="Unable to remove the member's private passport photo.",
+        ) from error
+    if not isinstance(result, dict) or result.get("result") not in {"ok", "not found"}:
+        raise HTTPException(status_code=502, detail="Cloudinary did not confirm the photo deletion.")
+
+
+def create_member_id_pdf(
+    payload: dict[str, Any],
+    member_id: str,
+    photo_bytes: bytes,
+    submitted_at: datetime,
+) -> bytes:
+    page_width, page_height = 85.6 * mm, 54 * mm
+    output = io.BytesIO()
+    document = canvas.Canvas(output, pagesize=(page_width, page_height), pageCompression=1)
+    document.setTitle(f"MEDAR Member ID {member_id}")
+    document.setFillColor(white)
+    document.roundRect(1 * mm, 1 * mm, page_width - 2 * mm, page_height - 2 * mm, 3 * mm, fill=1, stroke=0)
+    document.setFillColor(HexColor("#32105f"))
+    document.roundRect(1 * mm, page_height - 15 * mm, page_width - 2 * mm, 14 * mm, 3 * mm, fill=1, stroke=0)
+    document.rect(1 * mm, page_height - 15 * mm, page_width - 2 * mm, 3 * mm, fill=1, stroke=0)
+    document.setFillColor(white)
+    document.setFont("Helvetica-Bold", 8)
+    document.drawString(5 * mm, page_height - 7 * mm, "MIGRANT EMPLOYEES,")
+    document.setFont("Helvetica", 6)
+    document.drawString(5 * mm, page_height - 11 * mm, "DIASPORA AND RETURNEES")
+    document.setFont("Helvetica-Bold", 7)
+    document.drawRightString(page_width - 5 * mm, page_height - 9 * mm, "MEMBERSHIP ID")
+
+    photo_x, photo_y, photo_width, photo_height = 5 * mm, 8 * mm, 23 * mm, 29 * mm
+    document.setStrokeColor(HexColor("#ddd6e8"))
+    document.roundRect(photo_x, photo_y, photo_width, photo_height, 1.5 * mm, fill=0, stroke=1)
+    document.saveState()
+    photo_clip = document.beginPath()
+    photo_clip.roundRect(photo_x, photo_y, photo_width, photo_height, 1.5 * mm)
+    document.clipPath(photo_clip, stroke=0)
+    document.drawImage(
+        ImageReader(io.BytesIO(photo_bytes)),
+        photo_x,
+        photo_y,
+        width=photo_width,
+        height=photo_height,
+        preserveAspectRatio=True,
+        anchor="c",
+        mask="auto",
+    )
+    document.restoreState()
+
+    details_x = 32 * mm
+    document.setFillColor(HexColor("#777184"))
+    document.setFont("Helvetica-Bold", 5)
+    document.drawString(details_x, 34 * mm, "MEMBER NAME")
+    member_name = str(payload.get("fullName", ""))
+    font_size = 9
+    while font_size > 6 and document.stringWidth(member_name, "Helvetica-Bold", font_size) > 48 * mm:
+        font_size -= 0.5
+    document.setFillColor(HexColor("#32105f"))
+    document.setFont("Helvetica-Bold", font_size)
+    document.drawString(details_x, 29 * mm, member_name)
+    document.setFillColor(HexColor("#777184"))
+    document.setFont("Helvetica-Bold", 5)
+    document.drawString(details_x, 22 * mm, "MEMBER ID")
+    document.drawString(details_x, 13 * mm, "COUNTRY")
+    document.drawString(58 * mm, 13 * mm, "MEMBERSHIP TYPE")
+    document.setFillColor(HexColor("#302b3a"))
+    document.setFont("Helvetica-Bold", 7)
+    document.drawString(details_x, 18 * mm, member_id)
+    document.setFont("Helvetica", 6)
+    document.drawString(details_x, 9 * mm, str(payload.get("country", ""))[:24])
+    membership_type = str(payload.get("membershipType", "member")).capitalize()
+    document.drawString(58 * mm, 9 * mm, membership_type)
+    issue_date = submitted_at.date().isoformat()
+    document.setFillColor(HexColor("#0B8A42"))
+    document.setFont("Helvetica-Bold", 5)
+    document.drawRightString(page_width - 5 * mm, 3 * mm, f"ISSUED {issue_date}")
+    document.showPage()
+    document.save()
+    return output.getvalue()
+
+
 @app.get("/api/members/me")
 def current_application(
     request: Request, database: Database = Depends(get_database)
 ) -> dict[str, Any]:
     user = require_user(request, database)
     application = database.applications.find_one(
-        {"user_id": user["_id"]}, {"member_id": 1}
+        {"user_id": user["_id"]},
+        {
+            "member_id": 1,
+            "payload.fullName": 1,
+            "payload.country": 1,
+            "payload.membershipType": 1,
+            "passport_photo.public_id": 1,
+        },
     )
     if not application:
         return {"submitted": False}
-    return {"submitted": True, "memberId": application["member_id"]}
+    payload = application.get("payload", {})
+    passport_photo = application.get("passport_photo")
+    return {
+        "submitted": True,
+        "memberId": application["member_id"],
+        "hasPhoto": bool(
+            isinstance(passport_photo, dict) and passport_photo.get("public_id")
+        ),
+        "fullName": payload.get("fullName", ""),
+        "country": payload.get("country", ""),
+        "membershipType": payload.get("membershipType", "member"),
+    }
+
+
+@app.get("/api/members/me/id-card.pdf")
+def download_member_id(
+    request: Request, database: Database = Depends(get_database)
+) -> StreamingResponse:
+    user = require_user(request, database)
+    application = database.applications.find_one({"user_id": user["_id"]})
+    if not application:
+        raise HTTPException(status_code=404, detail="Submit a membership application before downloading your ID.")
+    photo = application.get("passport_photo", {})
+    public_id = photo.get("public_id") if isinstance(photo, dict) else None
+    if not isinstance(public_id, str) or not public_id:
+        raise HTTPException(status_code=409, detail="Upload a passport photo before downloading your Member ID.")
+    require_cloudinary()
+    try:
+        photo_url = cloudinary_utils.private_download_url(
+            public_id,
+            "jpg",
+            resource_type="image",
+            type="private",
+            attachment=False,
+            expires_at=int(time.time()) + 300,
+        )
+        with urlopen(photo_url, timeout=15) as photo_response:
+            photo_bytes = photo_response.read(MAX_PASSPORT_PHOTO_SIZE + 1)
+        if len(photo_bytes) > MAX_PASSPORT_PHOTO_SIZE:
+            raise HTTPException(status_code=502, detail="The stored passport photo is larger than expected.")
+    except (CloudinaryError, HTTPError, URLError, TimeoutError, OSError, Urllib3HTTPError) as error:
+        logger.exception("Unable to retrieve a private Cloudinary passport photo for ID generation.")
+        raise HTTPException(
+            status_code=502,
+            detail="Unable to retrieve your passport photo to generate the Member ID.",
+        ) from error
+    pdf_bytes = create_member_id_pdf(
+        application.get("payload", {}),
+        application["member_id"],
+        photo_bytes,
+        application["submitted_at"],
+    )
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{application["member_id"]}.pdf"',
+            "Cache-Control": "private, no-store",
+        },
+    )
+
+
+@app.post("/api/members/photo")
+async def upload_member_id_photo(
+    request: Request,
+    database: Database = Depends(get_database),
+) -> dict[str, str]:
+    session = validate_csrf(database, request)
+    user = require_user(request, database)
+    if session["user_id"] != user["_id"]:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+    application = database.applications.find_one(
+        {"user_id": user["_id"]},
+        {"_id": 1, "member_id": 1, "passport_photo.public_id": 1},
+    )
+    if not application:
+        raise HTTPException(status_code=404, detail="Submit a membership application before uploading an ID photo.")
+    saved_photo = application.get("passport_photo")
+    if isinstance(saved_photo, dict) and saved_photo.get("public_id"):
+        raise HTTPException(status_code=409, detail="A passport photo is already saved for this Member ID.")
+    form = await request.form()
+    photo_parts = form.getlist("passportPhoto")
+    photo_uploads = [
+        part for part in photo_parts if isinstance(part, UploadFile) and part.filename
+    ]
+    if len(photo_uploads) != 1:
+        raise HTTPException(status_code=400, detail="Choose one passport photo to upload.")
+    content, _ = read_upload(photo_uploads[0], {".jpg", ".jpeg", ".png"})
+    if len(content) > MAX_PASSPORT_PHOTO_SIZE:
+        raise HTTPException(status_code=413, detail="The passport photo must be 5 MB or smaller.")
+    photo_bytes = normalize_passport_photo(content)
+    public_id = upload_private_passport_photo(photo_bytes)
+    update = database.applications.update_one(
+        {"_id": application["_id"], "passport_photo.public_id": {"$exists": False}},
+        {"$set": {"passport_photo": {"public_id": public_id, "format": "jpg"}}},
+    )
+    if update.matched_count == 0:
+        delete_private_passport_photo(public_id)
+        raise HTTPException(status_code=409, detail="A passport photo is already saved for this Member ID.")
+    return {
+        "message": "Passport photo uploaded successfully.",
+        "memberId": application["member_id"],
+    }
 
 
 @app.get("/api/admin/members")
@@ -585,7 +859,8 @@ def delete_member(
     if session["user_id"] != admin["_id"]:
         raise HTTPException(status_code=401, detail="Authentication required.")
     application = database.applications.find_one(
-        {"member_id": member_id}, {"documents.storageName": 1}
+        {"member_id": member_id},
+        {"documents.storageName": 1, "passport_photo.public_id": 1},
     )
     if not application:
         raise HTTPException(status_code=404, detail="Member not found.")
@@ -598,6 +873,10 @@ def delete_member(
         if stored_file.parent != UPLOAD_DIR:
             raise RuntimeError("Stored membership document is outside the upload directory.")
         stored_files.append(stored_file)
+    passport_photo = application.get("passport_photo", {})
+    public_id = passport_photo.get("public_id") if isinstance(passport_photo, dict) else None
+    if isinstance(public_id, str) and public_id:
+        delete_private_passport_photo(public_id)
     database.applications.delete_one({"_id": application["_id"]})
     for stored_file in stored_files:
         stored_file.unlink(missing_ok=True)
@@ -641,6 +920,16 @@ async def submit_application(
     ]
     if len(supporting_uploads) > 5:
         raise HTTPException(status_code=400, detail="Choose no more than 5 supporting documents.")
+    photo_parts = form.getlist("passportPhoto")
+    photo_uploads = [
+        part for part in photo_parts if isinstance(part, UploadFile) and part.filename
+    ]
+    if len(photo_uploads) != 1:
+        raise HTTPException(status_code=400, detail="Upload one passport-style photo for your Member ID.")
+    photo_content, _ = read_upload(photo_uploads[0], {".jpg", ".jpeg", ".png"})
+    if len(photo_content) > MAX_PASSPORT_PHOTO_SIZE:
+        raise HTTPException(status_code=413, detail="The passport photo must be 5 MB or smaller.")
+    photo_bytes = normalize_passport_photo(photo_content)
 
     upload_items: list[tuple[UploadFile, set[str], str]] = []
     if identity_uploads:
@@ -654,6 +943,7 @@ async def submit_application(
         raise HTTPException(status_code=409, detail="A membership application has already been submitted.")
 
     created_files: list[Path] = []
+    passport_photo_public_id: str | None = None
     committed = False
     try:
         stored_documents = []
@@ -669,6 +959,7 @@ async def submit_application(
                 {"category": category, "filename": original_name, "storageName": storage_name}
             )
 
+        passport_photo_public_id = upload_private_passport_photo(photo_bytes)
         member_id = f"MEDAR-{secrets.token_hex(2).upper()}-{secrets.token_hex(2).upper()}"
         database.applications.insert_one(
             {
@@ -676,6 +967,10 @@ async def submit_application(
                 "member_id": member_id,
                 "payload": payload,
                 "documents": stored_documents,
+                "passport_photo": {
+                    "public_id": passport_photo_public_id,
+                    "format": "jpg",
+                },
                 "submitted_at": datetime.now(timezone.utc),
             }
         )
@@ -686,6 +981,8 @@ async def submit_application(
         if not committed:
             for created_file in created_files:
                 created_file.unlink(missing_ok=True)
+            if passport_photo_public_id:
+                delete_private_passport_photo(passport_photo_public_id)
 
     return {"memberId": member_id}
 

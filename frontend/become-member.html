@@ -137,6 +137,14 @@
       <h3>Identity & Supporting Documents</h3>
       <div class="document-upload">
         <div class="form-field">
+          <label for="passportPhoto">Passport-style photo for your Member ID *</label>
+          <input type="file" id="passportPhoto" accept=".jpg,.jpeg,.png,image/jpeg,image/png" required aria-describedby="passportPhotoHelp passportPhotoStatus">
+          <small id="passportPhotoHelp">Upload a clear, front-facing JPG or PNG photo. Maximum 5 MB. It will be stored privately in Cloudinary and included on your downloadable Member ID.</small>
+          <span class="upload-status" id="passportPhotoStatus" aria-live="polite">No photo selected</span>
+          <button type="button" class="photo-upload-btn" id="uploadPassportPhotoButton" hidden>Upload Photo &amp; Create ID</button>
+          <p class="photo-upload-message" id="passportPhotoUploadMessage" role="status" aria-live="polite" hidden></p>
+        </div>
+        <div class="form-field">
           <label for="identityDocument">Passport or National ID (PDF)</label>
           <input type="file" id="identityDocument" accept=".pdf,application/pdf" aria-describedby="identityDocumentHelp identityDocumentStatus">
           <small id="identityDocumentHelp">Select one PDF containing clear images of both sides of your ID, or the passport photo page. Maximum 10 MB.</small>
@@ -152,7 +160,7 @@
           <label for="additionalInformation">Additional information (optional)</label>
           <textarea id="additionalInformation" rows="4" placeholder="Add any details that may support your application"></textarea>
         </div>
-        <p class="document-privacy">Documents are submitted to the membership server and stored outside the public website files. Use this form only on a trusted HTTPS connection. Server storage encryption and access policies must be configured before production use.</p>
+        <p class="document-privacy">Your Member ID photo is stored as a private Cloudinary asset. Other uploaded documents are stored outside the public website files. Use this form only on a trusted HTTPS connection.</p>
       </div>
 
       <h3>Emergency Contact</h3>
@@ -167,6 +175,7 @@
         </div>
       </div>
       <p class="member-form-message" id="memberFormMessage" role="status" aria-live="polite" hidden></p>
+      <a class="submit-btn id-download-link" id="downloadMemberIdButton" href="/api/members/me/id-card.pdf" hidden download>Download Member ID (PDF)</a>
       <button type="submit" class="submit-btn" disabled>Submit Registration & Get Member ID →</button>
       <p class="secure">Your application is submitted to the membership server. We Care. We Support. We Empower.</p>
     </form>
@@ -191,6 +200,7 @@
           </div>
           <div class="pc-body">
             <div class="pc-avatar" aria-hidden="true">
+              <img id="pPhoto" alt="" hidden>
               <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
             </div>
             <div class="pc-details">
