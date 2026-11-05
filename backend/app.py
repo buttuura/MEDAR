@@ -521,14 +521,7 @@ def upload_private_member_document(
             detail=f"Unable to store a membership document in Cloudinary: {' '.join(message.split())[:300]}",
         ) from error
     uploaded_public_id = result.get("public_id") if isinstance(result, dict) else None
-    uploaded_resource_type = result.get("resource_type") if isinstance(result, dict) else None
-    uploaded_format = result.get("format") if isinstance(result, dict) else None
-    if (
-        not isinstance(uploaded_public_id, str)
-        or not uploaded_public_id
-        or uploaded_resource_type != resource_type
-        or not isinstance(uploaded_format, str)
-    ):
+    if not isinstance(uploaded_public_id, str) or not uploaded_public_id:
         raise HTTPException(
             status_code=502,
             detail="Cloudinary did not confirm the membership document upload.",
@@ -536,7 +529,7 @@ def upload_private_member_document(
     return {
         "public_id": uploaded_public_id,
         "resource_type": resource_type,
-        "format": uploaded_format.lower(),
+        "format": extension.lstrip("."),
     }
 
 
@@ -899,11 +892,34 @@ def view_member_document(
                 stored_format,
                 resource_type=resource_type,
                 type="private",
+                attachment=True,
                 expires_at=int(time.time()) + 300,
             )
             with urlopen(download_url, timeout=15) as document_response:
                 content = document_response.read(MAX_DOCUMENT_SIZE + 1)
-        except (CloudinaryError, HTTPError, URLError, TimeoutError, OSError, Urllib3HTTPError) as error:
+        except HTTPError as error:
+            response_body = error.read(2048).decode("utf-8", errors="replace")
+            config = cloudinary.config()
+            for credential in (config.api_key, config.api_secret):
+                if credential:
+                    response_body = response_body.replace(credential, "[redacted]")
+            try:
+                error_payload = json.loads(response_body)
+                message = error_payload.get("error", {}).get("message", "")
+            except (json.JSONDecodeError, AttributeError):
+                message = ""
+            logger.warning(
+                "Cloudinary membership document download returned HTTP %s.",
+                error.code,
+            )
+            raise HTTPException(
+                status_code=502,
+                detail=(
+                    f"Cloudinary could not provide this document (HTTP {error.code}). "
+                    f"{message[:250]}"
+                ).strip(),
+            ) from error
+        except (CloudinaryError, URLError, TimeoutError, OSError, Urllib3HTTPError) as error:
             logger.exception("Unable to retrieve a private Cloudinary membership document.")
             raise HTTPException(
                 status_code=502,
@@ -924,7 +940,7 @@ def view_member_document(
             stored_file,
             media_type=media_types[extension],
             filename=filename,
-            content_disposition_type="inline",
+            content_disposition_type="attachment",
             headers={"Cache-Control": "private, no-store"},
         )
 
@@ -933,7 +949,7 @@ def view_member_document(
         io.BytesIO(content),
         media_type=media_types[extension],
         headers={
-            "Content-Disposition": f'inline; filename="{safe_filename}"',
+            "Content-Disposition": f'attachment; filename="{safe_filename}"',
             "Cache-Control": "private, no-store",
             "X-Content-Type-Options": "nosniff",
         },

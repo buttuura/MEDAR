@@ -94,7 +94,35 @@ function createMemberRow(member) {
   });
   typeSelect.value = membershipTypeLabels[member.membershipType]
     ? member.membershipType
-    : 'member';
+    : 'beneficiary';
+  typeSelect.addEventListener('change', async () => {
+    const previousMembershipType = member.membershipType;
+    typeSelect.disabled = true;
+    try {
+      const csrfToken = await getCsrfToken();
+      const response = await fetch(
+        `/api/admin/members/${encodeURIComponent(member.memberId)}`,
+        {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-XSRF-TOKEN': csrfToken
+          },
+          body: JSON.stringify({ membershipType: typeSelect.value })
+        }
+      );
+      await readResponse(response);
+      member.membershipType = typeSelect.value;
+      showAdminMessage(`${member.fullName || 'Member'}'s membership type was updated.`);
+    } catch (error) {
+      typeSelect.value = membershipTypeLabels[previousMembershipType]
+        ? previousMembershipType
+        : 'beneficiary';
+      showAdminMessage(error.message || 'Unable to update this membership type.', true);
+    } finally {
+      typeSelect.disabled = false;
+    }
+  });
   typeCell.className = 'mobile-member-detail';
   typeCell.dataset.memberDetail = '';
   typeCell.dataset.label = 'Joined as';
@@ -114,19 +142,28 @@ function createMemberRow(member) {
   documentsCell.dataset.label = 'Documents';
   const documents = Array.isArray(member.documents) ? member.documents : [];
   if (documents.length) {
-    for (const document of documents) {
-      const link = document.createElement('a');
+    for (const memberDocument of documents) {
       const categoryLabels = {
         identity: 'Passport / National ID',
         supporting: 'Supporting document',
         passportPhoto: 'Passport photo'
       };
-      const category = categoryLabels[document.category] || 'Member document';
-      link.href = `/api/admin/members/${encodeURIComponent(member.memberId)}/documents/${encodeURIComponent(document.index)}`;
-      link.target = '_blank';
-      link.rel = 'noopener';
-      link.textContent = `${category}: ${document.filename || 'View file'}`;
-      documentsCell.append(link);
+      const category = categoryLabels[memberDocument.category] || 'Member document';
+      const documentRow = document.createElement('div');
+      documentRow.className = 'member-document-row';
+      const filename = document.createElement('span');
+      filename.textContent = `${category}: ${memberDocument.filename || 'Member document'}`;
+      const downloadButton = document.createElement('button');
+      downloadButton.type = 'button';
+      downloadButton.className = 'member-document-download';
+      downloadButton.textContent = 'Download';
+      downloadButton.addEventListener('click', () => {
+        window.location.assign(
+          `/api/admin/members/${encodeURIComponent(member.memberId)}/documents/${encodeURIComponent(memberDocument.index)}`
+        );
+      });
+      documentRow.append(filename, downloadButton);
+      documentsCell.append(documentRow);
     }
   } else {
     documentsCell.textContent = 'No uploaded documents';
@@ -137,34 +174,6 @@ function createMemberRow(member) {
   actionsCell.className = 'member-actions mobile-member-detail';
   actionsCell.dataset.memberDetail = '';
   actionsCell.dataset.label = 'Actions';
-  const saveButton = document.createElement('button');
-  saveButton.type = 'button';
-  saveButton.className = 'member-save';
-  saveButton.textContent = 'Save';
-  saveButton.addEventListener('click', async () => {
-    saveButton.disabled = true;
-    try {
-      const csrfToken = await getCsrfToken();
-      const response = await fetch(
-        `/api/admin/members/${encodeURIComponent(member.memberId)}`,
-        {
-          method: 'PATCH',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-XSRF-TOKEN': csrfToken
-          },
-          body: JSON.stringify({ membershipType: typeSelect.value })
-        }
-      );
-      await readResponse(response);
-      showAdminMessage(`${member.fullName || 'Member'}'s membership type was updated.`);
-    } catch (error) {
-      showAdminMessage(error.message || 'Unable to update this membership type.', true);
-    } finally {
-      saveButton.disabled = false;
-    }
-  });
-
   const deleteButton = document.createElement('button');
   deleteButton.type = 'button';
   deleteButton.className = 'member-delete';
@@ -192,7 +201,7 @@ function createMemberRow(member) {
       deleteButton.disabled = false;
     }
   });
-  actionsCell.append(saveButton, deleteButton);
+  actionsCell.append(deleteButton);
   row.append(actionsCell);
 
   detailsButton.addEventListener('click', () => {
