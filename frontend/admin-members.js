@@ -14,9 +14,9 @@ const membersPerPage = 20;
 let allMembers = [];
 let currentMembersPage = 1;
 const membershipTypeLabels = {
-  member: 'Member',
-  donor: 'Donor',
-  investor: 'Investor'
+  beneficiary: 'Beneficiary',
+  partner: 'Partner',
+  founding: 'Founding'
 };
 
 function showAdminMessage(message, isError = false) {
@@ -107,6 +107,31 @@ function createMemberRow(member) {
     : '—', 'mobile-member-detail', 'Joined on');
   joinedCell.dataset.memberDetail = '';
   row.append(joinedCell);
+
+  const documentsCell = document.createElement('td');
+  documentsCell.className = 'member-document-cell mobile-member-detail';
+  documentsCell.dataset.memberDetail = '';
+  documentsCell.dataset.label = 'Documents';
+  const documents = Array.isArray(member.documents) ? member.documents : [];
+  if (documents.length) {
+    for (const document of documents) {
+      const link = document.createElement('a');
+      const categoryLabels = {
+        identity: 'Passport / National ID',
+        supporting: 'Supporting document',
+        passportPhoto: 'Passport photo'
+      };
+      const category = categoryLabels[document.category] || 'Member document';
+      link.href = `/api/admin/members/${encodeURIComponent(member.memberId)}/documents/${encodeURIComponent(document.index)}`;
+      link.target = '_blank';
+      link.rel = 'noopener';
+      link.textContent = `${category}: ${document.filename || 'View file'}`;
+      documentsCell.append(link);
+    }
+  } else {
+    documentsCell.textContent = 'No uploaded documents';
+  }
+  row.append(documentsCell);
 
   const actionsCell = document.createElement('td');
   actionsCell.className = 'member-actions mobile-member-detail';

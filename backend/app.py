@@ -368,14 +368,14 @@ def validate_application(raw_payload: str, user: dict[str, Any]) -> dict[str, An
         "fullName": required_text(payload, "fullName", 120),
         "dob": required_text(payload, "dob", 10),
         "gender": required_text(payload, "gender", 20),
-        "nin": optional_text(payload, "nin", 100),
+        "nin": required_text(payload, "nin", 100),
         "phone": required_text(payload, "phone", 40),
-        "whatsapp": required_text(payload, "whatsapp", 40),
+        "whatsapp": optional_text(payload, "whatsapp", 40),
         "email": normalize_email(required_text(payload, "email", 254)),
         "country": required_text(payload, "country", 80),
         "city": optional_text(payload, "city", 120),
         "status": required_text(payload, "status", 80),
-        "membershipType": payload.get("membershipType", "member"),
+        "membershipType": payload.get("membershipType", "beneficiary"),
         "agency": optional_text(payload, "agency", 160),
         "additionalInformation": optional_text(payload, "additionalInformation", 5000),
         "emergencyName": optional_text(payload, "emergencyName", 120),
@@ -399,7 +399,7 @@ def validate_application(raw_payload: str, user: dict[str, Any]) -> dict[str, An
         raise HTTPException(status_code=422, detail="Choose a valid membership status.")
     if (
         not isinstance(normalized["membershipType"], str)
-        or normalized["membershipType"] not in {"member", "donor", "investor"}
+        or normalized["membershipType"] not in {"beneficiary", "partner", "founding"}
     ):
         raise HTTPException(status_code=422, detail="Choose a valid membership type.")
     if normalized["email"] != user["email"]:
@@ -492,6 +492,75 @@ def upload_private_passport_photo(content: bytes) -> str:
     return uploaded_public_id
 
 
+def upload_private_member_document(
+    content: bytes, extension: str
+) -> dict[str, str]:
+    require_cloudinary()
+    resource_type = "raw" if extension == ".pdf" else "image"
+    public_id = f"medar/member-documents/{uuid.uuid4().hex}"
+    if resource_type == "raw":
+        public_id += extension
+    try:
+        result = cloudinary_uploader.upload(
+            io.BytesIO(content),
+            public_id=public_id,
+            resource_type=resource_type,
+            type="private",
+            overwrite=False,
+            unique_filename=False,
+        )
+    except (CloudinaryError, Urllib3HTTPError, TimeoutError, OSError) as error:
+        logger.exception("Cloudinary membership document upload failed.")
+        config = cloudinary.config()
+        message = str(error).strip() or "Cloudinary rejected the upload."
+        for credential in (config.api_key, config.api_secret):
+            if credential:
+                message = message.replace(credential, "[redacted]")
+        raise HTTPException(
+            status_code=502,
+            detail=f"Unable to store a membership document in Cloudinary: {' '.join(message.split())[:300]}",
+        ) from error
+    uploaded_public_id = result.get("public_id") if isinstance(result, dict) else None
+    uploaded_resource_type = result.get("resource_type") if isinstance(result, dict) else None
+    uploaded_format = result.get("format") if isinstance(result, dict) else None
+    if (
+        not isinstance(uploaded_public_id, str)
+        or not uploaded_public_id
+        or uploaded_resource_type != resource_type
+        or not isinstance(uploaded_format, str)
+    ):
+        raise HTTPException(
+            status_code=502,
+            detail="Cloudinary did not confirm the membership document upload.",
+        )
+    return {
+        "public_id": uploaded_public_id,
+        "resource_type": resource_type,
+        "format": uploaded_format.lower(),
+    }
+
+
+def delete_private_cloudinary_asset(public_id: str, resource_type: str) -> None:
+    require_cloudinary()
+    if resource_type not in {"image", "raw"}:
+        raise RuntimeError("Stored Cloudinary document has an invalid resource type.")
+    try:
+        result = cloudinary_uploader.destroy(
+            public_id,
+            resource_type=resource_type,
+            type="private",
+            invalidate=True,
+        )
+    except (CloudinaryError, Urllib3HTTPError, TimeoutError, OSError) as error:
+        logger.exception("Cloudinary membership document deletion failed.")
+        raise HTTPException(
+            status_code=502,
+            detail="Unable to remove a private membership document from Cloudinary.",
+        ) from error
+    if not isinstance(result, dict) or result.get("result") not in {"ok", "not found"}:
+        raise HTTPException(status_code=502, detail="Cloudinary did not confirm document deletion.")
+
+
 def delete_private_passport_photo(public_id: str) -> None:
     require_cloudinary()
     try:
@@ -574,7 +643,7 @@ def create_member_id_pdf(
     document.drawString(details_x, 18 * mm, member_id)
     document.setFont("Helvetica", 6)
     document.drawString(details_x, 9 * mm, str(payload.get("country", ""))[:24])
-    membership_type = str(payload.get("membershipType", "member")).capitalize()
+    membership_type = str(payload.get("membershipType", "beneficiary")).capitalize()
     document.drawString(58 * mm, 9 * mm, membership_type)
     issue_date = submitted_at.date().isoformat()
     document.setFillColor(HexColor("#0B8A42"))
@@ -612,7 +681,7 @@ def current_application(
         ),
         "fullName": payload.get("fullName", ""),
         "country": payload.get("country", ""),
-        "membershipType": payload.get("membershipType", "member"),
+        "membershipType": payload.get("membershipType", "beneficiary"),
     }
 
 
@@ -707,6 +776,26 @@ async def upload_member_id_photo(
     }
 
 
+def get_application_documents(application: dict[str, Any]) -> list[dict[str, Any]]:
+    documents = [
+        document
+        for document in application.get("documents", [])
+        if isinstance(document, dict)
+    ]
+    passport_photo = application.get("passport_photo")
+    if isinstance(passport_photo, dict) and passport_photo.get("public_id"):
+        documents.append(
+            {
+                "category": "passportPhoto",
+                "filename": "Passport photo.jpg",
+                "public_id": passport_photo["public_id"],
+                "resource_type": "image",
+                "format": "jpg",
+            }
+        )
+    return documents
+
+
 @app.get("/api/admin/members")
 def list_members_for_admin(
     request: Request, database: Database = Depends(get_database)
@@ -723,6 +812,8 @@ def list_members_for_admin(
                 "payload.status": 1,
                 "payload.membershipType": 1,
                 "submitted_at": 1,
+                "documents": 1,
+                "passport_photo.public_id": 1,
             },
         ).sort("submitted_at", -1)
     )
@@ -744,13 +835,109 @@ def list_members_for_admin(
                 "country": application.get("payload", {}).get("country", ""),
                 "memberStatus": application.get("payload", {}).get("status", ""),
                 "membershipType": application.get("payload", {}).get(
-                    "membershipType", "member"
+                    "membershipType", "beneficiary"
                 ),
                 "submittedAt": application.get("submitted_at"),
+                "documents": [
+                    {
+                        "index": index,
+                        "category": document.get("category", "supporting"),
+                        "filename": document.get("filename", "Member document"),
+                    }
+                    for index, document in enumerate(
+                        get_application_documents(application)
+                    )
+                ],
             }
             for application in applications
         ]
     }
+
+
+@app.get("/api/admin/members/{member_id}/documents/{document_index}")
+def view_member_document(
+    member_id: str,
+    document_index: int,
+    request: Request,
+    database: Database = Depends(get_database),
+) -> Response:
+    require_admin(request, database)
+    application = database.applications.find_one(
+        {"member_id": member_id}, {"documents": 1, "passport_photo": 1}
+    )
+    if not application:
+        raise HTTPException(status_code=404, detail="Member not found.")
+    documents = get_application_documents(application)
+    if document_index < 0 or document_index >= len(documents):
+        raise HTTPException(status_code=404, detail="Membership document not found.")
+    document = documents[document_index]
+    filename = Path(
+        str(document.get("filename", "member-document")).replace("\\", "/")
+    ).name
+    extension = Path(filename).suffix.lower()
+    media_types = {
+        ".pdf": "application/pdf",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".png": "image/png",
+    }
+    if extension not in media_types:
+        raise HTTPException(status_code=415, detail="This membership document type cannot be viewed.")
+
+    public_id = document.get("public_id")
+    resource_type = document.get("resource_type")
+    if isinstance(public_id, str) and public_id:
+        if resource_type not in {"image", "raw"}:
+            raise RuntimeError("Stored Cloudinary document has an invalid resource type.")
+        stored_format = document.get("format")
+        if not isinstance(stored_format, str) or not re.fullmatch(r"[a-z0-9]+", stored_format):
+            raise RuntimeError("Stored Cloudinary document has an invalid format.")
+        require_cloudinary()
+        try:
+            download_url = cloudinary_utils.private_download_url(
+                public_id,
+                stored_format,
+                resource_type=resource_type,
+                type="private",
+                expires_at=int(time.time()) + 300,
+            )
+            with urlopen(download_url, timeout=15) as document_response:
+                content = document_response.read(MAX_DOCUMENT_SIZE + 1)
+        except (CloudinaryError, HTTPError, URLError, TimeoutError, OSError, Urllib3HTTPError) as error:
+            logger.exception("Unable to retrieve a private Cloudinary membership document.")
+            raise HTTPException(
+                status_code=502,
+                detail="Unable to retrieve this membership document from Cloudinary.",
+            ) from error
+        if len(content) > MAX_DOCUMENT_SIZE:
+            raise HTTPException(status_code=502, detail="The stored membership document is larger than expected.")
+    else:
+        storage_name = document.get("storageName")
+        if not isinstance(storage_name, str) or Path(storage_name).name != storage_name:
+            raise RuntimeError("Stored membership document has an invalid filename.")
+        stored_file = (UPLOAD_DIR / storage_name).resolve()
+        if stored_file.parent != UPLOAD_DIR:
+            raise RuntimeError("Stored membership document is outside the upload directory.")
+        if not stored_file.is_file():
+            raise HTTPException(status_code=404, detail="Membership document not found.")
+        return FileResponse(
+            stored_file,
+            media_type=media_types[extension],
+            filename=filename,
+            content_disposition_type="inline",
+            headers={"Cache-Control": "private, no-store"},
+        )
+
+    safe_filename = re.sub(r"[^A-Za-z0-9._-]", "_", filename) or "member-document"
+    return StreamingResponse(
+        io.BytesIO(content),
+        media_type=media_types[extension],
+        headers={
+            "Content-Disposition": f'inline; filename="{safe_filename}"',
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
 
 
 @app.get("/api/admin/admins")
@@ -836,7 +1023,7 @@ def update_member_type(
     membership_type = payload.get("membershipType")
     if (
         not isinstance(membership_type, str)
-        or membership_type not in {"member", "donor", "investor"}
+        or membership_type not in {"beneficiary", "partner", "founding"}
     ):
         raise HTTPException(status_code=422, detail="Choose a valid membership type.")
     result = database.applications.update_one(
@@ -860,12 +1047,19 @@ def delete_member(
         raise HTTPException(status_code=401, detail="Authentication required.")
     application = database.applications.find_one(
         {"member_id": member_id},
-        {"documents.storageName": 1, "passport_photo.public_id": 1},
+        {"documents": 1, "passport_photo.public_id": 1},
     )
     if not application:
         raise HTTPException(status_code=404, detail="Member not found.")
-    stored_files = []
+    stored_files: list[Path] = []
     for document in application.get("documents", []):
+        public_id = document.get("public_id")
+        resource_type = document.get("resource_type")
+        if isinstance(public_id, str) and public_id:
+            if resource_type not in {"image", "raw"}:
+                raise RuntimeError("Stored Cloudinary document has an invalid resource type.")
+            delete_private_cloudinary_asset(public_id, resource_type)
+            continue
         storage_name = document.get("storageName")
         if not isinstance(storage_name, str) or Path(storage_name).name != storage_name:
             raise RuntimeError("Stored membership document has an invalid filename.")
@@ -942,21 +1136,22 @@ async def submit_application(
     if database.applications.find_one({"user_id": user["_id"]}, {"_id": 1}):
         raise HTTPException(status_code=409, detail="A membership application has already been submitted.")
 
-    created_files: list[Path] = []
+    created_cloud_assets: list[dict[str, str]] = []
     passport_photo_public_id: str | None = None
     committed = False
     try:
         stored_documents = []
         for upload, allowed_extensions, category in upload_items:
             content, extension = read_upload(upload, allowed_extensions)
-            storage_name = f"{uuid.uuid4().hex}{extension}"
-            destination = UPLOAD_DIR / storage_name
-            with destination.open("xb") as document_file:
-                created_files.append(destination)
-                document_file.write(content)
             original_name = Path((upload.filename or "").replace("\\", "/")).name[:255]
+            asset = upload_private_member_document(content, extension)
+            created_cloud_assets.append(asset)
             stored_documents.append(
-                {"category": category, "filename": original_name, "storageName": storage_name}
+                {
+                    "category": category,
+                    "filename": original_name,
+                    **asset,
+                }
             )
 
         passport_photo_public_id = upload_private_passport_photo(photo_bytes)
@@ -979,8 +1174,15 @@ async def submit_application(
         raise HTTPException(status_code=409, detail="A membership application has already been submitted.") from error
     finally:
         if not committed:
-            for created_file in created_files:
-                created_file.unlink(missing_ok=True)
+            for asset in created_cloud_assets:
+                try:
+                    delete_private_cloudinary_asset(
+                        asset["public_id"], asset["resource_type"]
+                    )
+                except HTTPException:
+                    logger.exception(
+                        "Unable to clean up a Cloudinary membership document after a failed application submission."
+                    )
             if passport_photo_public_id:
                 delete_private_passport_photo(passport_photo_public_id)
 

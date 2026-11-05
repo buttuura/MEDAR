@@ -16,7 +16,11 @@ document.getElementById('country').addEventListener('change', event => {
   document.getElementById('pCountry').textContent = event.target.value || '-';
 });
 document.getElementById('membershipType').addEventListener('change', event => {
-  const membershipTypes = { member: 'Member', donor: 'Donor', investor: 'Investor' };
+  const membershipTypes = {
+    beneficiary: 'Beneficiary',
+    partner: 'Partner',
+    founding: 'Founding'
+  };
   document.getElementById('pStatus').textContent = membershipTypes[event.target.value] || '-';
 });
 
@@ -196,7 +200,11 @@ async function initializeMembershipForm() {
     document.getElementById('pID').textContent = application.memberId;
     document.getElementById('pName').textContent = application.fullName || 'Your name';
     document.getElementById('pCountry').textContent = application.country || '-';
-    const membershipTypes = { member: 'Member', donor: 'Donor', investor: 'Investor' };
+    const membershipTypes = {
+      beneficiary: 'Beneficiary',
+      partner: 'Partner',
+      founding: 'Founding'
+    };
     document.getElementById('pStatus').textContent = membershipTypes[application.membershipType] || '-';
     for (const element of registrationForm.elements) {
       element.disabled = true;
